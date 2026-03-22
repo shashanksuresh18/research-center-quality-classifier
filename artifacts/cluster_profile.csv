@@ -1,0 +1,4 @@
+cluster,qualityTier,internalFacilitiesCount,hospitals_10km,pharmacies_10km,facilityDiversity_10km,facilityDensity_10km
+2,Basic,2.312,0.5,0.438,0.279,0.125
+1,Premium,9.529,3.471,4.118,0.85,0.537
+0,Standard,4.941,1.529,2.059,0.56,0.29
