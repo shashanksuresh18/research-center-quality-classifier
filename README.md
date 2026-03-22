@@ -1,37 +1,54 @@
-# Research Center Quality Classification
+# Research Center Quality Classifier
 
-This project solves the Research Grid Ltd Phase 1 machine learning assignment.
-The goal is to classify synthetic UK research centers into three quality tiers
-using unsupervised learning and expose the trained model through a FastAPI API.
+Research Grid Ltd Phase 1 submission.
+
+This project groups synthetic UK research centers into three quality tiers using
+K-Means clustering and serves predictions through a FastAPI application. The
+repository includes the analysis notebook, training pipeline, API, static
+frontend, saved model artifact, and Docker setup.
+
+## Live Deployment
+
+- App: `https://research-center-quality-classifier.onrender.com/`
+- API docs: `https://research-center-quality-classifier.onrender.com/docs`
+- Health endpoint: `https://research-center-quality-classifier.onrender.com/health`
+
+## Ways to Run the Project
+
+There are three main ways to use this project:
+
+1. Clone the repository and run it locally with Python and `uvicorn`
+2. Run it in Docker with `docker build` / `docker run` or `docker compose`
+3. Use the live Render deployment directly in the browser
+
+The detailed steps for each option are included later in this README.
 
 ## Problem Summary
 
-Each research center has:
+The dataset does not contain a target label such as `qualityTier`, so this is an
+unsupervised learning problem rather than a supervised classification problem.
+The workflow is:
 
-- internal infrastructure information,
-- nearby healthcare access counts,
-- facility diversity and density metrics.
-
-Because the dataset does not contain a ground-truth target label, the problem is
-framed as **clustering** rather than supervised classification. I used
-`KMeans(n_clusters=3)` to group centers into:
-
-- `Premium`
-- `Standard`
-- `Basic`
+1. inspect and validate the dataset
+2. perform EDA on the key numeric variables
+3. select the features that describe center quality
+4. scale the features with `StandardScaler`
+5. cluster centers with `KMeans(n_clusters=3)`
+6. map the raw cluster ids to `Premium`, `Standard`, and `Basic`
+7. expose the trained model through FastAPI
 
 ## Dataset
 
 Input file: `research_centers.csv`
 
-Dataset characteristics:
+Dataset summary:
 
-- 50 research centers
+- 50 rows
 - 5 synthetic cities
 - 10 original columns
-- 0 missing values in required fields
+- no missing values in the required fields
 
-Selected modeling features:
+Selected modelling features:
 
 - `internalFacilitiesCount`
 - `hospitals_10km`
@@ -39,59 +56,61 @@ Selected modeling features:
 - `facilityDiversity_10km`
 - `facilityDensity_10km`
 
-These five features were chosen because they directly measure the two quality
-dimensions described in the brief:
+Excluded fields:
 
-- internal capability,
-- access to supporting healthcare infrastructure.
+- `researchCenterId`
+- `researchCenterName`
+- `city`
+- `latitude`
+- `longitude`
+
+The selected features were kept because they directly capture internal
+capability and nearby healthcare support.
 
 ## Approach
 
-### 1. Exploratory Data Analysis
+### Exploratory Data Analysis
 
-The project generates the required plots:
+The notebook and training pipeline cover:
 
-- histogram of internal facility counts,
-- hospital vs pharmacy access scatter plot,
-- diversity vs density scatter plot,
-- correlation heatmap of the selected numeric features.
+- data shape and schema checks
+- missing-value validation
+- summary statistics
+- histogram of `internalFacilitiesCount`
+- healthcare access scatter plots
+- correlation heatmap
+- cluster profile and city-tier summary tables
 
-EDA artifacts are saved under `artifacts/plots/`.
+Notebook deliverable:
 
-### 2. Feature Selection
+- `EDA_and_Model.ipynb`
 
-The selected features all have a clear business interpretation and are strongly
-positively related. The correlation matrix showed that higher-quality centers
-tend to score consistently well across internal facilities, hospital access,
-pharmacy access, diversity, and density.
+Generated analysis artifacts:
 
-Some of the strongest correlations observed:
+- `artifacts/plots/internal_facilities_histogram.png`
+- `artifacts/plots/hospital_pharmacy_access_scatter.png`
+- `artifacts/plots/diversity_density_scatter.png`
+- `artifacts/plots/feature_correlation_heatmap.png`
 
-- `internalFacilitiesCount` vs `facilityDiversity_10km`: `0.904`
-- `internalFacilitiesCount` vs `facilityDensity_10km`: `0.901`
-- `internalFacilitiesCount` vs `pharmacies_10km`: `0.889`
-- `internalFacilitiesCount` vs `hospitals_10km`: `0.879`
+### Model
 
-### 3. Clustering
+Training is implemented in `train_model.py`.
 
-Workflow:
+Pipeline steps:
 
-1. Load and validate the dataset.
-2. Standardize the selected features with `StandardScaler`.
-3. Train `KMeans` with `k=3`, `random_state=42`, and `n_init=20`.
-4. Evaluate clustering quality using the silhouette score.
-5. Rank the clusters and map them to business-friendly tier labels.
+1. load and validate the dataset
+2. scale the selected features with `StandardScaler`
+3. fit `KMeans(n_clusters=3, random_state=42, n_init=20)`
+4. evaluate the clustering with silhouette score
+5. rank cluster centers in standardized feature space
+6. map clusters to business tiers
+7. save the trained artifact and interpretation tables
 
-Important note: raw K-Means cluster ids are arbitrary. I did **not** assume
-that cluster `0` always means `Premium`. Instead, I ranked the cluster centers
-using their average value in standardized feature space because all selected
-features are positively aligned with quality.
+Important detail:
 
-Final mapping:
-
-- Cluster `1` -> `Premium`
-- Cluster `0` -> `Standard`
-- Cluster `2` -> `Basic`
+- raw K-Means cluster ids are arbitrary
+- the final tier mapping is derived from the cluster-center strength, not from
+  assuming that cluster `0` always means the same business label
 
 ## Results
 
@@ -99,11 +118,11 @@ Silhouette score:
 
 - `0.5519`
 
-Tier distribution:
+Cluster-to-tier mapping:
 
-- `Premium`: 17 centers
-- `Standard`: 17 centers
-- `Basic`: 16 centers
+- Cluster `1` -> `Premium`
+- Cluster `0` -> `Standard`
+- Cluster `2` -> `Basic`
 
 Average feature values by tier:
 
@@ -113,40 +132,38 @@ Average feature values by tier:
 | Standard | 4.941 | 1.529 | 2.059 | 0.560 | 0.290 |
 | Basic | 2.312 | 0.500 | 0.438 | 0.279 | 0.125 |
 
-Interpretation:
+Tier counts:
 
-- `Premium` centers have the strongest internal infrastructure and the best
-  nearby healthcare support.
-- `Basic` centers are clearly separated by much lower facility counts and lower
-  external access.
-- `Standard` centers sit between the two extremes, which is what we would
-  expect from a sensible three-tier clustering solution.
+- `Premium`: 17
+- `Standard`: 17
+- `Basic`: 16
 
-City-level distribution:
+Saved outputs:
 
-| City | Premium | Standard | Basic |
-| --- | ---: | ---: | ---: |
-| City 1 | 4 | 6 | 1 |
-| City 2 | 2 | 2 | 2 |
-| City 3 | 4 | 5 | 5 |
-| City 4 | 4 | 1 | 5 |
-| City 5 | 3 | 3 | 3 |
-
-This suggests that stronger centers are not isolated to a single city, although
-City 1 skews more toward `Standard` and City 4 has a larger share of `Basic`
-centers.
+- `cluster_model.pkl`
+- `artifacts/cluster_profile.csv`
+- `artifacts/cluster_centers_scaled.csv`
+- `artifacts/city_tier_distribution.csv`
+- `artifacts/research_centers_clustered.csv`
+- `artifacts/metrics.json`
 
 ## API
 
-The FastAPI application is implemented in `app.py`.
+The FastAPI app is implemented in `app.py`.
 
 Available endpoints:
 
 - `GET /`
 - `GET /health`
 - `POST /predict`
+- `GET /docs`
 
-Example request:
+The root route serves the static frontend in `index.html`.
+
+If `cluster_model.pkl` is missing, the API calls `train_and_save_outputs()` from
+`train_model.py` automatically on first use.
+
+### Example Request
 
 ```json
 {
@@ -158,7 +175,7 @@ Example request:
 }
 ```
 
-Example response:
+### Example Response
 
 ```json
 {
@@ -167,12 +184,38 @@ Example response:
 }
 ```
 
-## Repository Structure
+### Health Response
+
+```json
+{
+  "status": "ok",
+  "modelReady": true,
+  "silhouetteScore": 0.5519
+}
+```
+
+## Frontend
+
+The repository includes a single-file frontend in `index.html`.
+
+It provides:
+
+- five sliders for the model inputs
+- a live JSON payload preview
+- an automatic `POST /predict` request on load and on slider change
+- a tier badge and progress bar for the prediction result
+- graceful handling of API and network failures
+
+When served by FastAPI, the frontend uses the same origin automatically. It can
+also be pointed at another backend with `?apiBaseUrl=...`.
+
+## Project Structure
 
 ```text
 .
 |-- .dockerignore
 |-- .env.draft
+|-- .gitignore
 |-- app.py
 |-- artifacts/
 |   |-- city_tier_distribution.csv
@@ -185,15 +228,16 @@ Example response:
 |-- docker-compose.yaml
 |-- Dockerfile
 |-- EDA_and_Model.ipynb
+|-- index.html
 |-- README.md
 |-- requirements.txt
 |-- research_centers.csv
 `-- train_model.py
 ```
 
-## How To Run
+## Local Setup
 
-### 1. Create and activate a virtual environment
+### 1. Create a virtual environment
 
 Windows:
 
@@ -215,30 +259,45 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Train the model and generate artifacts
+### 3. Retrain the model if needed
 
 ```bash
 python train_model.py
 ```
 
-This creates:
+This regenerates:
 
 - `cluster_model.pkl`
-- `EDA_and_Model.ipynb`
 - `artifacts/*.csv`
 - `artifacts/plots/*.png`
 
-### 4. Run the API
+### 4. Run the API locally
 
 ```bash
-uvicorn app:app --reload
+uvicorn app:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Swagger docs will be available at:
+Open:
 
+- `http://127.0.0.1:8000/`
 - `http://127.0.0.1:8000/docs`
+- `http://127.0.0.1:8000/health`
 
-## Docker Support
+### 5. Test the prediction endpoint
+
+```bash
+curl -X POST "http://127.0.0.1:8000/predict" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "internalFacilitiesCount": 9,
+    "hospitals_10km": 3,
+    "pharmacies_10km": 2,
+    "facilityDiversity_10km": 0.82,
+    "facilityDensity_10km": 0.45
+  }'
+```
+
+## Docker
 
 Build the image:
 
@@ -258,8 +317,13 @@ Run with Docker Compose:
 docker compose up --build
 ```
 
-Open the API documentation:
+Docker healthcheck:
 
+- `GET /health`
+
+Access the containerised app:
+
+- `http://127.0.0.1:8000/`
 - `http://127.0.0.1:8000/docs`
 
 Test the health endpoint:
@@ -282,26 +346,28 @@ curl -X POST "http://127.0.0.1:8000/predict" \
   }'
 ```
 
-## Key Design Decisions
+## Deployment
 
-- `KMeans` is a good fit because the task is to discover tiers without a labeled
-  target column.
-- `StandardScaler` is necessary because the features are measured on different
-  scales.
-- Tier labels are assigned **after** clustering by ranking cluster centers, not
-  by trusting the raw cluster id.
-- The API will automatically train the model if `cluster_model.pkl` is missing,
-  which makes the project easier to run from scratch.
+This project is deployed as a Docker-based Render web service.
 
-## Files You Should Highlight In Interview
+Useful routes:
 
-- `train_model.py`: end-to-end data, modeling, artifact generation
-- `EDA_and_Model.ipynb`: notebook version of the reasoning and analysis
-- `app.py`: serving the trained clustering model through FastAPI
+- `/` for the frontend
+- `/docs` for Swagger UI
+- `/health` for readiness checks
+- `/predict` for model inference
+
+## Key Files
+
+- `EDA_and_Model.ipynb`: notebook deliverable with the EDA and modelling flow
+- `train_model.py`: reproducible training and artifact generation pipeline
+- `app.py`: FastAPI inference service
+- `index.html`: single-file frontend served by the API
+- `cluster_model.pkl`: saved trained model bundle
 
 ## Possible Improvements
 
-- Use a larger and more realistic dataset.
-- Add geographic distance features beyond simple count summaries.
-- Compare `KMeans` with hierarchical clustering or Gaussian mixture models.
-- Add automated tests for the training pipeline and API.
+- compare K-Means against other clustering methods on a larger dataset
+- add automated API and training tests
+- add stronger model monitoring for deployment
+- extend the frontend with richer result explanations
